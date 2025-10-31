@@ -1,15 +1,24 @@
-torch>=2.0.0
-transformers>=4.30.0
-datasets>=2.12.0
-accelerate>=0.20.0
-peft>=0.4.0
-flask>=2.3.0
-flask-cors>=4.0.0
-numpy>=1.24.0
-pandas>=2.0.0
-PyYAML>=6.0
-tqdm>=4.65.0
-wandb>=0.15.0
-pytest>=7.3.0
-black>=23.0.0
-flake8>=6.0.0
+# SVEN Extension - Requirements
+# 
+# ⚠️ SPLIT REQUIREMENTS TO AVOID CONFLICTS
+#
+# Choose based on your role:
+#
+# Rohit (Partner 1 - Model/Training):
+#   pip install -r requirements/training.txt
+#
+# Kush (Partner 2 - Data/Evaluation/Webapp):
+#   pip install -r requirements/evaluation.txt
+#
+# For full development (both partners' dependencies):
+#   pip install -r requirements/training.txt -r requirements/evaluation.txt
+#
+# Docker builds install all dependencies automatically.
+
+# Base requirements (everyone needs these)
+-r requirements/base.txt
+
+# Optional: Install all dependencies
+# Uncomment if you want everything:
+# -r requirements/training.txt
+# -r requirements/evaluation.txt

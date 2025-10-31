@@ -1,0 +1,106 @@
+# Evaluation Configuration
+# 🔧 OWNER: Kush (Partner 2)
+# Used for: CodeQL security testing, HumanEval functional testing
+
+# Security evaluation (CodeQL)
+security:
+  tool: "codeql"
+  
+  # CodeQL configuration
+  codeql_path: "codeql"                 # Path to codeql executable
+  queries_dir: "./evaluation/codeql_queries"
+  
+  # Languages to evaluate
+  languages:
+    - python
+    - java
+    - cpp
+  
+  # Target CWEs
+  target_cwe:
+    - "CWE-089"  # SQL Injection
+    - "CWE-022"  # Path Traversal
+    - "CWE-787"  # Buffer Overflow
+  
+  # Security rate computation
+  num_test_samples: 1000                # How many code samples to test
+  timeout_per_analysis: 60              # Seconds per CodeQL analysis
+
+# Functional correctness evaluation (HumanEval)
+functional:
+  benchmark: "humaneval"
+  
+  # Pass@k configuration
+  k_values:
+    - 1
+    - 10
+    - 100
+  
+  # Execution configuration
+  timeout_per_test: 5                   # Seconds per test case
+  max_memory_mb: 512                    # Max memory per execution
+  sandbox: true                         # Run in sandboxed environment
+  
+  # HumanEval dataset
+  humaneval_path: "./evaluation/humaneval"
+  use_cache: true                       # Cache test results
+
+# Dataset configuration for evaluation
+dataset:
+  name: "python"                        # Which language to evaluate
+  sources:
+    - big_vul
+    - cross_vul
+    - vudenc
+  
+  # Test split configuration
+  test_split: 0.1
+  manual_verification_subset: 100       # Manually verify N samples for accuracy
+  
+  # Filtering
+  min_code_length: 10                   # Minimum tokens
+  max_code_length: 512                  # Maximum tokens
+  exclude_duplicates: true
+
+# Model checkpoints to evaluate
+models:
+  checkpoint_dir: "./checkpoints"
+  
+  # Which checkpoints to evaluate
+  evaluate_checkpoints:
+    - "secure_prefix_epoch5.pt"
+    - "secure_prefix_epoch10.pt"
+    - "secure_prefix_best.pt"
+  
+  # Baseline comparisons
+  compare_baselines:
+    - "codegen-350m-vanilla"            # Base model without prefix
+    - "codegen-2b7-vanilla"
+
+# Output configuration
+output:
+  results_dir: "./evaluation/results"
+  save_format: "json"                   # "json" or "csv"
+  
+  # Save detailed outputs
+  save_generated_code: true             # Save all generated code samples
+  save_codeql_reports: true             # Save CodeQL SARIF reports
+  save_test_traces: false               # Save execution traces (large)
+
+# Comparison and visualization
+reporting:
+  generate_plots: true                  # Generate charts/graphs
+  plot_format: "png"                    # "png" or "pdf"
+  
+  # Metrics to track
+  track_metrics:
+    - security_rate
+    - pass_at_1
+    - pass_at_10
+    - pass_at_100
+    - avg_vulnerabilities_per_sample
+    - cwe_distribution
+  
+  # Generate HTML report
+  html_report: true
+  report_template: "./evaluation/templates/report.html"

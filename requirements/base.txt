@@ -1,0 +1,20 @@
+# Base requirements - shared by both partners
+# Install with: pip install -r requirements/base.txt
+
+# Core Python utilities
+numpy>=1.24.0
+pandas>=2.0.0
+PyYAML>=6.0
+tqdm>=4.65.0
+
+# Testing
+pytest>=7.3.0
+pytest-cov>=4.1.0
+
+# Code quality
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.4.0
+
+# Git hooks (optional)
+pre-commit>=3.3.0

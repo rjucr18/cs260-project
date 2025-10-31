@@ -1,0 +1,21 @@
+# Training requirements - Rohit (Partner 1)
+# Install with: pip install -r requirements/base.txt -r requirements/training.txt
+
+# Include base requirements
+-r base.txt
+
+# Deep learning frameworks
+torch>=2.0.0
+transformers>=4.30.0
+accelerate>=0.20.0
+peft>=0.4.0
+
+# Dataset handling
+datasets>=2.12.0
+
+# Experiment tracking (optional but recommended)
+wandb>=0.15.0
+tensorboard>=2.13.0
+
+# Model optimization
+bitsandbytes>=0.39.0  # For 8-bit training if needed

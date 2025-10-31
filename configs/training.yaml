@@ -1,0 +1,75 @@
+# Training Configuration
+# 🔧 OWNER: Rohit (Partner 1)
+# Used for: Model training, prefix-tuning, loss computation
+
+model:
+  # Model selection
+  name: "Salesforce/codegen-350M-mono"  # or codegen-2B7-mono for larger model
+  
+  # Prefix-tuning hyperparameters
+  prefix_length: 20                     # Number of prefix tokens
+  prefix_hidden_dim: 512                # Dimension of prefix embeddings
+  prefix_init: "random"                 # "random" or "vocab"
+  
+  # Model configuration
+  max_seq_length: 512                   # Maximum sequence length
+  freeze_base_model: true               # Keep CodeGen frozen, only train prefix
+
+training:
+  # Training hyperparameters
+  batch_size: 8                         # Per-device batch size
+  num_epochs: 10                        # Total training epochs
+  learning_rate: 1e-4                   # Learning rate for prefix parameters
+  warmup_steps: 500                     # Linear warmup steps
+  gradient_accumulation_steps: 4        # Accumulate gradients over N steps
+  
+  # Optimization
+  optimizer: "adamw"
+  weight_decay: 0.01
+  max_grad_norm: 1.0                    # Gradient clipping
+  
+  # Learning rate schedule
+  lr_scheduler: "linear"                # "linear", "cosine", or "constant"
+  
+  # Mixed precision
+  fp16: true                            # Use mixed precision training (requires GPU)
+
+loss_weights:
+  # SVEN's three-loss architecture
+  conditional_lm: 1.0                   # Conditional language modeling loss
+  contrastive: 0.5                      # Secure vs vulnerable contrastive loss
+  kl_divergence: 0.1                    # KL regularization (preserve correctness)
+
+checkpoint:
+  save_dir: "./checkpoints"
+  save_every: 1000                      # Save checkpoint every N steps
+  keep_last_n: 3                        # Keep only last N checkpoints
+  save_best: true                       # Save best model based on validation loss
+
+logging:
+  # Weights & Biases (optional)
+  use_wandb: false                      # Set to true if using wandb
+  wandb_project: "sven-extension"
+  wandb_run_name: "codegen-350m-python"
+  
+  # Console logging
+  log_every: 100                        # Log metrics every N steps
+  eval_every: 500                       # Run evaluation every N steps
+
+# Data loading (references Kush's dataset interface)
+dataset:
+  train_datasets:
+    - "big_vul"
+    - "cross_vul"
+    - "vudenc"
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  num_workers: 4                        # DataLoader workers
+  pin_memory: true                      # Pin memory for GPU
+
+# Hardware
+device:
+  use_gpu: true
+  gpu_id: 0                             # Which GPU to use (if multiple)
+  distributed: false                    # Multi-GPU training

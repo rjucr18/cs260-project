@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  sven-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sven-extension:latest
+    container_name: sven-dev
+    volumes:
+      - ./data:/workspace/data
+      - ./checkpoints:/workspace/checkpoints
+      - ./configs:/workspace/configs:ro
+      - ./logs:/workspace/logs
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sven-extension:latest
+    container_name: sven-webapp
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./webapp:/workspace/webapp
+      - ./checkpoints:/workspace/checkpoints:ro
+    working_dir: /workspace/webapp
+    command: python app.py
+    depends_on:
+      - sven-dev
+
+volumes:
+  data:
+  checkpoints:
+  logs:

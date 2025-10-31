@@ -1,0 +1,41 @@
+# Dataset configuration for Python
+model:
+  name: "Salesforce/codegen-350M-mono"
+  prefix_length: 20
+  prefix_hidden_dim: 512
+
+training:
+  batch_size: 8
+  learning_rate: 1e-4
+  num_epochs: 10
+  warmup_steps: 500
+  gradient_accumulation_steps: 4
+  max_seq_length: 512
+
+loss_weights:
+  conditional_lm: 1.0
+  contrastive: 0.5
+  kl_divergence: 0.1
+
+dataset:
+  name: "python"
+  sources:
+    - big_vul
+    - cross_vul
+    - vudenc
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+
+evaluation:
+  security_rate:
+    tool: "codeql"
+    language: "python"
+  pass_at_k:
+    k_values: [1, 10, 100]
+    benchmark: "humaneval"
+
+checkpoint:
+  save_dir: "./checkpoints"
+  save_every: 1000
+  keep_last_n: 3

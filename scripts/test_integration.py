@@ -4,6 +4,14 @@ Quick integration test (safe to run without heavy dependencies):
 - Verifies Trainer can be constructed
 Run: python scripts/test_integration.py
 """
+from pathlib import Path
+import sys
+
+# Ensure project root is on sys.path when running from scripts/
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from models.codegen_wrapper import CodeGenWrapper
 from training.train import Trainer, TrainerConfig
 

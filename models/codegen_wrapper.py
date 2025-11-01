@@ -19,7 +19,15 @@ except Exception:  # pragma: no cover
     AutoModelForCausalLM = None  # type: ignore[assignment]
     AutoTokenizer = None  # type: ignore[assignment]
 
-from data.schemas import GeneratedCode
+# Ensure local project packages are importable even when invoked from subdirs
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from sven_data.schemas import GeneratedCode
 from models.interfaces import BasePrefixModel, ModelConfig
 from prefix_tuning.secure_prefix import SecurePrefixTuning, VulnerablePrefixTuning, PrefixConfig
 

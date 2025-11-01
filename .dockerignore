@@ -1,0 +1,67 @@
+# Docker build context exclusions
+# Keep this file tracked in git. We intentionally exclude dev-only files and large artifacts.
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+.virtualenv/
+*.venv
+
+# Git
+.git
+.git/**
+.gitattributes
+.gitignore
+
+# IDEs and editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and experiment artifacts
+logs/
+*.log
+wandb/
+tensorboard/
+
+# Data and checkpoints (keep placeholders only)
+data/
+data/**
+!data/.gitkeep
+checkpoints/
+checkpoints/**
+!checkpoints/.gitkeep
+
+# Large ML artifacts
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.hdf5
+*.tar
+*.gz
+*.zip
+*.parquet
+
+# Not needed inside images
+COLLABORATION.md
+SETUP.md
+
+# OS-specific
+.DS_Store
+Thumbs.db

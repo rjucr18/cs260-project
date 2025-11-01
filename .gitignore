@@ -61,7 +61,7 @@ wandb/
 tensorboard/
 
 # Docker
-.dockerignore
+# track .dockerignore in git (do not ignore)
 
 # OS
 .DS_Store

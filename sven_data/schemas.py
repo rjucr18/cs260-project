@@ -1,7 +1,7 @@
 """
 Shared data schemas for SVEN project.
 
-⚠️ CRITICAL: These schemas are the contract between Rohit and Kush's code.
+⚠️ CRITICAL: .
 DO NOT modify without team discussion and coordination!
 
 Usage:

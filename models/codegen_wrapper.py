@@ -41,16 +41,17 @@ class CodeGenWrapper(BasePrefixModel):
         prefix_hidden_dim: int = 512,
         device: Optional[str] = None,
         lazy_load: bool = True,
+        enable_prefix: bool = True,
     ) -> None:
         self.model_name = model_name
         self.secure = secure
+        self.enable_prefix = enable_prefix
         self._device = device or ("cuda" if torch and hasattr(torch, "cuda") and torch.cuda.is_available() else "cpu")
         self._lazy = lazy_load
         self._model = None
         self._tokenizer = None
         cfg = PrefixConfig(prefix_length=prefix_length, hidden_dim=prefix_hidden_dim)
         self.prefix_module = SecurePrefixTuning(cfg) if secure else VulnerablePrefixTuning(cfg)
-
         if not self._lazy:
             self._ensure_loaded()
 
@@ -76,16 +77,33 @@ class CodeGenWrapper(BasePrefixModel):
                 prompt=prompt,
                 language=language,
             )
-
         self._ensure_loaded()
         assert self._model is not None and self._tokenizer is not None
 
-        inputs = self._tokenizer(prompt, return_tensors="pt").to(self._device)
-        # NOTE: Week 1: we are not actually injecting prefixes into attention layers yet.
-        # We'll just run vanilla generation so plumbing works end-to-end.
+        tokenized = self._tokenizer(prompt, return_tensors="pt")
+        input_ids = tokenized["input_ids"].to(self._device)
+        attention_mask = tokenized["attention_mask"].to(self._device)
+
+        # Soft prefix injection: prepend learned prefix as additional "virtual" tokens.
+        if self.enable_prefix:
+            prefix_embeds = self.prefix_module.get_prefix_embeddings().to(self._device)  # [P, H]
+            # Expand batch dimension.
+            prefix_embeds = prefix_embeds.unsqueeze(0)  # [1, P, H]
+            inputs_embeds = self._model.transformer.wte(input_ids)  # CodeGen embedding layer name
+            full_embeds = torch.cat([prefix_embeds, inputs_embeds], dim=1)  # [B, P+T, H]
+            # Adjust attention mask: prefix tokens should be attended (set to 1)
+            prefix_mask = torch.ones((attention_mask.size(0), prefix_embeds.size(1)), device=self._device, dtype=attention_mask.dtype)
+            full_attention = torch.cat([prefix_mask, attention_mask], dim=1)
+            generate_kwargs = {
+                "inputs_embeds": full_embeds,
+                "attention_mask": full_attention,
+            }
+        else:
+            generate_kwargs = {"input_ids": input_ids, "attention_mask": attention_mask}
+
         with torch.no_grad():
             output_ids = self._model.generate(
-                **inputs,
+                **generate_kwargs,
                 max_new_tokens=max_length,
                 temperature=temperature,
                 top_p=top_p,

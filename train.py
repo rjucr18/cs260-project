@@ -21,6 +21,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--config", type=str, default="configs/training.yaml", help="Path to training config YAML")
     p.add_argument("--dry-run", action="store_true", help="Run without loading datasets or training")
     p.add_argument("--model", type=str, default="Salesforce/codegen-350M-mono", help="HF model name")
+    p.add_argument("--steps", type=int, default=0, help="Number of training steps (0 = use epochs)")
+    p.add_argument("--prefix-length", type=int, default=None, help="Override prefix length")
+    p.add_argument("--no-contrastive", action="store_true", help="Disable contrastive loss")
+    p.add_argument("--no-kl", action="store_true", help="Disable KL regularization")
+    p.add_argument("--timing-only", action="store_true", help="Run timing loop without saving")
     return p.parse_args()
 
 
@@ -36,12 +41,18 @@ def main() -> int:
     model = CodeGenWrapper(
         model_name=args.model,
         secure=True,
-        prefix_length=cfg.get("model", {}).get("prefix_length", 20),
+        prefix_length=(args.prefix_length or cfg.get("model", {}).get("prefix_length", 20)),
         prefix_hidden_dim=cfg.get("model", {}).get("prefix_hidden_dim", 512),
         lazy_load=True,
     )
 
-    trainer = Trainer(model=model, config=TrainerConfig(num_epochs=cfg.get("training", {}).get("num_epochs", 1), dry_run=args.dry_run or True))
+    trainer = Trainer(
+        model=model,
+        config=TrainerConfig(
+            num_epochs=cfg.get("training", {}).get("num_epochs", 1),
+            dry_run=args.dry_run or True,
+        ),
+    )
     trainer.train()
     return 0
 

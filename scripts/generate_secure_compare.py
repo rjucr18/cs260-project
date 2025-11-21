@@ -1,16 +1,7 @@
-"""
-Generate side-by-side code for secure vs vulnerable modes.
-Usage (dry-run safe):
-  python scripts/generate_secure_compare.py --prompt "def connect(user_input):" --max-length 64
-"""
+"""Generate side-by-side code for secure vs vulnerable modes."""
 import argparse
 from pathlib import Path
 import json
-import sys
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from models.codegen_wrapper import CodeGenWrapper
 
@@ -25,9 +16,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    # Secure
+    
     secure = CodeGenWrapper(secure=True, lazy_load=True)
-    # Vulnerable (uses a separate prefix instance)
     vulnerable = CodeGenWrapper(secure=False, lazy_load=True)
 
     sec = secure.generate(args.prompt, max_length=args.max_length)

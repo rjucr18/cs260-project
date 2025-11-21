@@ -2,15 +2,21 @@
 model:
   name: "Salesforce/codegen-350M-mono"
   prefix_length: 20
-  prefix_hidden_dim: 512
+  prefix_hidden_dim: 1024  # Match CodeGen-350M embedding dim
+  device: "cuda"  # or "cpu"
+  seed: 42
 
 training:
   batch_size: 8
-  learning_rate: 1e-4
+  learning_rate: 5e-3  # Higher for prefix-only
   num_epochs: 10
   warmup_steps: 500
   gradient_accumulation_steps: 4
   max_seq_length: 512
+  amp_enabled: true  # Mixed precision for T4
+  optimizer: "adamw"
+  weight_decay: 0.01
+  max_grad_norm: 1.0
 
 loss_weights:
   conditional_lm: 1.0

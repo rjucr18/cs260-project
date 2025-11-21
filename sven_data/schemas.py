@@ -75,6 +75,9 @@ class GeneratedCode:
     prompt: str                   # Original prompt used
     language: str                 # Programming language
     
+    # Metadata about generation
+    metadata: Optional[Dict[str, Any]] = None  # Generation parameters (temp, max_length, etc.)
+    
     # Evaluation results (filled by evaluation pipeline)
     security_violations: Optional[List[str]] = None  # List of CWE IDs found by CodeQL
     is_functionally_correct: Optional[bool] = None   # HumanEval pass/fail

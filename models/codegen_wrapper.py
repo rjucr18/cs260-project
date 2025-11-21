@@ -19,14 +19,6 @@ except Exception:  # pragma: no cover
     AutoModelForCausalLM = None  # type: ignore[assignment]
     AutoTokenizer = None  # type: ignore[assignment]
 
-# Ensure local project packages are importable even when invoked from subdirs
-import sys
-from pathlib import Path
-
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
 from sven_data.schemas import GeneratedCode
 from models.interfaces import BasePrefixModel, ModelConfig
 from prefix_tuning.secure_prefix import SecurePrefixTuning, VulnerablePrefixTuning, PrefixConfig
@@ -42,15 +34,18 @@ class CodeGenWrapper(BasePrefixModel):
         device: Optional[str] = None,
         lazy_load: bool = True,
         enable_prefix: bool = True,
+        use_sdpa: bool = True,  # Enable SDPA for better memory efficiency
     ) -> None:
         self.model_name = model_name
         self.secure = secure
         self.enable_prefix = enable_prefix
+        self.use_sdpa = use_sdpa
         self._device = device or ("cuda" if torch and hasattr(torch, "cuda") and torch.cuda.is_available() else "cpu")
         self._lazy = lazy_load
         self._model = None
         self._tokenizer = None
-        cfg = PrefixConfig(prefix_length=prefix_length, hidden_dim=prefix_hidden_dim)
+        # CodeGen-350M uses 1024-dim embeddings, so set prefix to match
+        cfg = PrefixConfig(prefix_length=prefix_length, hidden_dim=1024)
         self.prefix_module = SecurePrefixTuning(cfg) if secure else VulnerablePrefixTuning(cfg)
         if not self._lazy:
             self._ensure_loaded()
@@ -111,17 +106,124 @@ class CodeGenWrapper(BasePrefixModel):
                 pad_token_id=self._tokenizer.eos_token_id,
             )[0]
         text = self._tokenizer.decode(output_ids, skip_special_tokens=True)
-        return GeneratedCode(code=text, is_secure_mode=self.secure, prompt=prompt, language=language)
+        metadata = {
+            "max_length": max_length,
+            "temperature": temperature,
+            "top_p": top_p,
+            "model_name": self.model_name,
+            "prefix_enabled": self.enable_prefix,
+        }
+        return GeneratedCode(code=text, is_secure_mode=self.secure, prompt=prompt, language=language, metadata=metadata)
 
     def get_prefix_embeddings(self):
         return self.prefix_module.get_prefix_embeddings()
 
-    def compute_loss(self, input_ids, labels, diff_mask) -> Dict[str, Any]:
-        # Week 1 placeholder: return zeros so Trainer can run without model wiring
-        if torch is None:
+    def compute_loss(self, batch: Dict[str, Any], loss_weights: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
+        """
+        Compute three-loss SVEN objective:
+        1. Conditional LM loss: push model toward secure tokens on changed regions
+        2. Contrastive loss: maximize difference between secure/vulnerable logits
+        3. KL preservation loss: maintain behavior on unchanged regions
+        
+        Args:
+            batch: Dict with keys 'input_ids', 'labels', 'diff_mask', 'vulnerable_ids' (optional)
+            loss_weights: Optional dict with keys 'conditional_lm', 'contrastive', 'kl_divergence'
+        
+        Returns:
+            Dict with individual losses and total_loss
+        """
+        if torch is None or self._model is None:
             return {"lm_loss": 0.0, "contrastive_loss": 0.0, "kl_loss": 0.0, "total_loss": 0.0}
-        zero = torch.tensor(0.0)
-        return {"lm_loss": zero, "contrastive_loss": zero, "kl_loss": zero, "total_loss": zero}
+        
+        # Default weights
+        weights = loss_weights or {"conditional_lm": 1.0, "contrastive": 0.5, "kl_divergence": 0.1}
+        
+        input_ids = batch["input_ids"].to(self._device)
+        labels = batch["labels"].to(self._device)
+        diff_mask = batch["diff_mask"].to(self._device)  # 1 = changed, 0 = unchanged
+        
+        # Ensure model is loaded
+        self._ensure_loaded()
+        
+        # Get prefix embeddings and inject
+        if self.enable_prefix:
+            prefix_embeds = self.prefix_module.get_prefix_embeddings().to(self._device).unsqueeze(0)
+            inputs_embeds = self._model.transformer.wte(input_ids)
+            full_embeds = torch.cat([prefix_embeds, inputs_embeds], dim=1)
+            
+            # Extend labels and mask for prefix
+            prefix_labels = torch.full((labels.size(0), prefix_embeds.size(1)), -100, 
+                                      dtype=labels.dtype, device=labels.device)
+            labels_with_prefix = torch.cat([prefix_labels, labels], dim=1)
+            
+            prefix_mask = torch.zeros((diff_mask.size(0), prefix_embeds.size(1)), 
+                                     dtype=diff_mask.dtype, device=diff_mask.device)
+            diff_mask_with_prefix = torch.cat([prefix_mask, diff_mask], dim=1)
+        else:
+            full_embeds = self._model.transformer.wte(input_ids)
+            labels_with_prefix = labels
+            diff_mask_with_prefix = diff_mask
+        
+        # Forward pass
+        outputs = self._model(inputs_embeds=full_embeds, labels=labels_with_prefix)
+        logits = outputs.logits
+        
+        # 1. Conditional LM loss on changed regions (diff_mask == 1)
+        # Focus training on security-critical tokens
+        lm_loss_full = torch.nn.functional.cross_entropy(
+            logits[:, :-1, :].reshape(-1, logits.size(-1)),
+            labels_with_prefix[:, 1:].reshape(-1),
+            reduction='none'
+        )
+        lm_loss_full = lm_loss_full.view(labels_with_prefix.size(0), -1)
+        
+        # Apply diff mask (only count changed tokens)
+        changed_mask = diff_mask_with_prefix[:, 1:].float()
+        lm_loss = (lm_loss_full * changed_mask).sum() / (changed_mask.sum() + 1e-8)
+        
+        # 2. Contrastive loss (optional, requires vulnerable logits)
+        # Maximize difference between secure and vulnerable predictions
+        contrastive_loss = torch.tensor(0.0, device=self._device)
+        if "vulnerable_logits" in batch:
+            vulnerable_logits = batch["vulnerable_logits"].to(self._device)
+            # Margin-based: push secure logits away from vulnerable
+            margin = 1.0
+            diff = torch.nn.functional.cosine_similarity(
+                logits.view(-1, logits.size(-1)),
+                vulnerable_logits.view(-1, vulnerable_logits.size(-1)),
+                dim=-1
+            )
+            contrastive_loss = torch.relu(margin - diff).mean()
+        
+        # 3. KL preservation loss on unchanged regions (diff_mask == 0)
+        # Maintain functional correctness on non-security code
+        kl_loss = torch.tensor(0.0, device=self._device)
+        if "baseline_logits" in batch:
+            baseline_logits = batch["baseline_logits"].to(self._device)
+            unchanged_mask = (1 - diff_mask_with_prefix[:, 1:]).float()
+            
+            # KL divergence on unchanged tokens
+            kl_per_token = torch.nn.functional.kl_div(
+                torch.nn.functional.log_softmax(logits[:, :-1, :], dim=-1),
+                torch.nn.functional.softmax(baseline_logits[:, :-1, :], dim=-1),
+                reduction='none'
+            ).sum(dim=-1)
+            kl_loss = (kl_per_token * unchanged_mask).sum() / (unchanged_mask.sum() + 1e-8)
+        
+        # Total weighted loss
+        total_loss = (
+            weights["conditional_lm"] * lm_loss +
+            weights["contrastive"] * contrastive_loss +
+            weights["kl_divergence"] * kl_loss
+        )
+        
+        return {
+            "lm_loss": lm_loss.item(),
+            "contrastive_loss": contrastive_loss.item(),
+            "kl_loss": kl_loss.item(),
+            "total_loss": total_loss.item(),
+            "total_loss_tensor": total_loss  # For backward
+        }
 
     # ----- internals -----
     def _ensure_loaded(self) -> None:
@@ -129,8 +231,30 @@ class CodeGenWrapper(BasePrefixModel):
             return
         if AutoModelForCausalLM is None or AutoTokenizer is None:
             raise RuntimeError("transformers is not installed. Install training requirements to use the model.")
+        
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self._model = AutoModelForCausalLM.from_pretrained(self.model_name)
+        
+        # Enable SDPA (memory-efficient attention) for T4 GPUs
+        # Falls back to math kernel if flash not available
+        model_kwargs = {}
+        if self.use_sdpa and torch is not None:
+            # Try to use SDPA - will use memory_efficient on T4 (Turing)
+            try:
+                model_kwargs["attn_implementation"] = "sdpa"
+                print("[MODEL] Enabling SDPA (memory-efficient attention for T4)")
+            except Exception:
+                print("[MODEL] SDPA not available, using default attention")
+        
+        self._model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
+        
         if torch is not None:
             self._model.to(self._device)
+            # Enable SDPA backend hints (prefers memory_efficient on T4)
+            if self.use_sdpa and hasattr(torch.backends.cuda, 'sdp_kernel'):
+                torch.backends.cuda.sdp_kernel(
+                    enable_flash=True,      # Will be skipped on SM75 (T4)
+                    enable_mem_efficient=True,  # Works on T4
+                    enable_math=False       # Slower fallback
+                )
+        
         self._model.eval()

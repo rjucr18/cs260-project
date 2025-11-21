@@ -1,15 +1,7 @@
-"""
-CLI runner for training scaffolding (Week 1).
-- Loads configs/training.yaml
-- Initializes CodeGenWrapper + SecurePrefixTuning
-- Supports --dry-run to validate setup without datasets or downloads
-"""
+"""CLI runner for SVEN training."""
 from __future__ import annotations
 
 import argparse
-import sys
-from pathlib import Path
-
 import yaml
 
 from models.codegen_wrapper import CodeGenWrapper
@@ -17,15 +9,11 @@ from training.train import Trainer, TrainerConfig
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="SVEN Training Runner (Week 1)")
-    p.add_argument("--config", type=str, default="configs/training.yaml", help="Path to training config YAML")
-    p.add_argument("--dry-run", action="store_true", help="Run without loading datasets or training")
-    p.add_argument("--model", type=str, default="Salesforce/codegen-350M-mono", help="HF model name")
+    p = argparse.ArgumentParser(description="SVEN Training Runner")
+    p.add_argument("--config", type=str, default="configs/python.yaml", help="Path to training config YAML")
+    p.add_argument("--dry-run", action="store_true", help="Run without training")
     p.add_argument("--steps", type=int, default=0, help="Number of training steps (0 = use epochs)")
-    p.add_argument("--prefix-length", type=int, default=None, help="Override prefix length")
-    p.add_argument("--no-contrastive", action="store_true", help="Disable contrastive loss")
-    p.add_argument("--no-kl", action="store_true", help="Disable KL regularization")
-    p.add_argument("--timing-only", action="store_true", help="Run timing loop without saving")
+    p.add_argument("--timing-only", action="store_true", help="Run timing loop only")
     return p.parse_args()
 
 
@@ -39,10 +27,9 @@ def main() -> int:
     cfg = load_cfg(args.config)
 
     model = CodeGenWrapper(
-        model_name=args.model,
+        model_name=cfg.get("model", {}).get("name", "Salesforce/codegen-350M-mono"),
         secure=True,
-        prefix_length=(args.prefix_length or cfg.get("model", {}).get("prefix_length", 20)),
-        prefix_hidden_dim=cfg.get("model", {}).get("prefix_hidden_dim", 512),
+        prefix_length=cfg.get("model", {}).get("prefix_length", 20),
         lazy_load=True,
     )
 
@@ -50,7 +37,14 @@ def main() -> int:
         model=model,
         config=TrainerConfig(
             num_epochs=cfg.get("training", {}).get("num_epochs", 1),
-            dry_run=args.dry_run or True,
+            dry_run=args.dry_run,
+            steps=args.steps,
+            timing_only=args.timing_only,
+            learning_rate=cfg.get("training", {}).get("learning_rate", 5e-3),
+            batch_size=cfg.get("training", {}).get("batch_size", 8),
+            amp_enabled=cfg.get("training", {}).get("amp_enabled", True),
+            seed=cfg.get("model", {}).get("seed", 42),
+            loss_weights=cfg.get("loss_weights"),
         ),
     )
     trainer.train()

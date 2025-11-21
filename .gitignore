@@ -59,6 +59,7 @@ logs/
 *.log
 wandb/
 tensorboard/
+.coverage
 
 # Docker
 .dockerignore

@@ -86,25 +86,29 @@ class BasePrefixModel(ABC):
     @abstractmethod
     def compute_loss(
         self,
-        input_ids: torch.Tensor,
-        labels: torch.Tensor,
-        diff_mask: torch.Tensor
-    ) -> Dict[str, torch.Tensor]:
+        batch: Dict[str, Any],
+        loss_weights: Optional[Dict[str, float]] = None
+    ) -> Dict[str, Any]:
         """
         Compute training losses.
         
         Args:
-            input_ids: Token IDs of input code
-            labels: Token IDs of target code (secure)
-            diff_mask: Mask indicating changed tokens
+            batch: Dictionary with keys:
+                - input_ids: Token IDs of input code
+                - labels: Token IDs of target code (secure)
+                - diff_mask: Mask indicating changed tokens (1=changed, 0=unchanged)
+                - vulnerable_logits (optional): For contrastive loss
+                - baseline_logits (optional): For KL preservation
+            loss_weights: Optional dict with keys 'conditional_lm', 'contrastive', 'kl_divergence'
             
         Returns:
             Dictionary with loss components:
             {
-                "lm_loss": conditional language modeling loss,
-                "contrastive_loss": secure vs vulnerable distinction,
-                "kl_loss": KL divergence regularization,
-                "total_loss": weighted sum
+                "lm_loss": conditional language modeling loss (float),
+                "contrastive_loss": secure vs vulnerable distinction (float),
+                "kl_loss": KL divergence regularization (float),
+                "total_loss": weighted sum (float),
+                "total_loss_tensor": torch.Tensor for backward (if training)
             }
             
         Note: This is Rohit's implementation detail, but the return format
